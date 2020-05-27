@@ -3,6 +3,8 @@ using System;
 using System.Collections.Generic;
 using System.Data;
 using System.Data.SqlClient;
+using System.Linq;
+using System.Reflection;
 
 namespace dbtest
 {
@@ -24,20 +26,22 @@ namespace dbtest
 
         const string connectionString = @"Data Source = (localdb)\MSSQLLocalDB; Initial Catalog = testdb; Integrated Security = True";
 
-        enum InsertType 
+        enum InsertType
         {
-                cmdtype,
-                dappertype,
-                SqlBulkCopy,
+            cmdtype,
+            dappertype,
+            SqlBulkCopy_1,
+            SqlBulkCopy_2,
+
         }
 
-      
+
         static void Main(string[] args)
         {
-     
-            var flag = InsertType.SqlBulkCopy;
 
-            switch (flag) 
+            var flag = InsertType.SqlBulkCopy_2;
+
+            switch (flag)
             {
                 case InsertType.cmdtype:
                     cmdtype();
@@ -45,35 +49,38 @@ namespace dbtest
                 case InsertType.dappertype:
                     dappertype();
                     break;
-                case InsertType.SqlBulkCopy:
+                case InsertType.SqlBulkCopy_1:
                     SqlBulkCopy();
+                    break;
+                case InsertType.SqlBulkCopy_2:
+                    SqlBulkCopy2();
                     break;
             }
 
             Console.WriteLine("Hello World!");
         }
 
-        static void SqlBulkCopy()
+        static void SqlBulkCopy2()
         {
+
             using (SqlConnection destinationConnection =
-           new SqlConnection(connectionString))
+                    new SqlConnection(connectionString))
             {
                 destinationConnection.Open();
 
-                // Set up the bulk copy object.
-                // Note that the column positions in the source
-                // data reader match the column positions in
-                // the destination table so there is no need to
-                // map columns.
                 using (SqlBulkCopy bulkCopy =
-                           new SqlBulkCopy(destinationConnection))
+       new SqlBulkCopy(destinationConnection))
                 {
                     bulkCopy.DestinationTableName =
-                        "dbo.BulkCopyDemoMatchingColumns";
+                        "dbo.new_employees";
 
                     try
                     {
-                        // Write from the source to the destination.
+
+                        List<DBModel> list = new List<DBModel>();
+                        list.Add(new DBModel() { fname = "a", lname = "b", minit = 'c' });
+                        DataTable reader = ToDataTable(list);
+
                         bulkCopy.WriteToServer(reader);
                     }
                     catch (Exception ex)
@@ -82,21 +89,83 @@ namespace dbtest
                     }
                     finally
                     {
-                        // Close the SqlDataReader. The SqlBulkCopy
-                        // object is automatically closed at the end
-                        // of the using block.
-                        reader.Close();
+
                     }
                 }
 
-                // Perform a final count on the destination
-                // table to see how many rows were added.
-                long countEnd = System.Convert.ToInt32(
+            }
+
+        }
+
+        static void SqlBulkCopy()
+        {
+            using (SqlConnection sourceConnection =
+                               new SqlConnection(connectionString))
+            {
+                sourceConnection.Open();
+
+                // Perform an initial count on the destination table.
+                SqlCommand commandRowCount = new SqlCommand(
+                    "SELECT COUNT(*) FROM " +
+                    "dbo.new_employees;",
+                    sourceConnection);
+                long countStart = System.Convert.ToInt32(
                     commandRowCount.ExecuteScalar());
-                Console.WriteLine("Ending row count = {0}", countEnd);
-                Console.WriteLine("{0} rows were added.", countEnd - countStart);
-                Console.WriteLine("Press Enter to finish.");
-                Console.ReadLine();
+                Console.WriteLine("Starting row count = {0}", countStart);
+
+                // Get data from the source table as a SqlDataReader.
+                SqlCommand commandSourceData = new SqlCommand(
+                    "SELECT *" +
+                    "FROM dbo.new_employees;", sourceConnection);
+                SqlDataReader reader =
+                    commandSourceData.ExecuteReader();
+
+                // Open the destination connection. In the real world you would
+                // not use SqlBulkCopy to move data from one table to the other
+                // in the same database. This is for demonstration purposes only.
+                using (SqlConnection destinationConnection =
+                           new SqlConnection(connectionString))
+                {
+                    destinationConnection.Open();
+
+                    // Set up the bulk copy object.
+                    // Note that the column positions in the source
+                    // data reader match the column positions in
+                    // the destination table so there is no need to
+                    // map columns.
+                    using (SqlBulkCopy bulkCopy =
+                               new SqlBulkCopy(destinationConnection))
+                    {
+                        bulkCopy.DestinationTableName =
+                            "dbo.new_employees";
+
+                        try
+                        {
+                            // Write from the source to the destination.
+                            bulkCopy.WriteToServer(reader);
+                        }
+                        catch (Exception ex)
+                        {
+                            Console.WriteLine(ex.Message);
+                        }
+                        finally
+                        {
+                            // Close the SqlDataReader. The SqlBulkCopy
+                            // object is automatically closed at the end
+                            // of the using block.
+                            reader.Close();
+                        }
+                    }
+
+                    // Perform a final count on the destination
+                    // table to see how many rows were added.
+                    long countEnd = System.Convert.ToInt32(
+                        commandRowCount.ExecuteScalar());
+                    Console.WriteLine("Ending row count = {0}", countEnd);
+                    Console.WriteLine("{0} rows were added.", countEnd - countStart);
+                    Console.WriteLine("Press Enter to finish.");
+                    Console.ReadLine();
+                }
             }
         }
 
@@ -133,6 +202,132 @@ namespace dbtest
             }
         }
 
+
+        private static DataTable ToDataTable<T>(List<T> items)
+        {
+            var tb = new DataTable(typeof(T).Name);
+
+            PropertyInfo[] props = typeof(T).GetProperties(BindingFlags.Public | BindingFlags.Instance);
+
+            foreach (PropertyInfo prop in props)
+            {
+                Type t = GetCoreType(prop.PropertyType);
+                tb.Columns.Add(prop.Name, t);
+            }
+
+            foreach (T item in items)
+            {
+                var values = new object[props.Length];
+
+                for (int i = 0; i < props.Length; i++)
+                {
+                    values[i] = props[i].GetValue(item, null);
+                }
+
+                tb.Rows.Add(values);
+            }
+
+            return tb;
+        }
+
+        /// <summary>
+        /// Determine of specified type is nullable
+        /// </summary>
+        public static bool IsNullable(Type t)
+        {
+            return !t.IsValueType || (t.IsGenericType && t.GetGenericTypeDefinition() == typeof(Nullable<>));
+        }
+
+        /// <summary>
+        /// Return underlying type if type is Nullable otherwise return the type
+        /// </summary>
+        public static Type GetCoreType(Type t)
+        {
+            if (t != null && IsNullable(t))
+            {
+                if (!t.IsValueType)
+                {
+                    return t;
+                }
+                else
+                {
+                    return Nullable.GetUnderlyingType(t);
+                }
+            }
+            else
+            {
+                return t;
+            }
+        }
+
+    }
+
+    public static class DataTableExtensions
+    {
+        public static IList<T> ToList<T>(this DataTable table) where T : new()
+        {
+            IList<PropertyInfo> properties = typeof(T).GetProperties().ToList();
+            IList<T> result = new List<T>();
+
+            //取得DataTable所有的row data
+            foreach (var row in table.Rows)
+            {
+                var item = MappingItem<T>((DataRow)row, properties);
+                result.Add(item);
+            }
+
+            return result;
+        }
+
+        private static T MappingItem<T>(DataRow row, IList<PropertyInfo> properties) where T : new()
+        {
+            T item = new T();
+            foreach (var property in properties)
+            {
+                if (row.Table.Columns.Contains(property.Name))
+                {
+                    //針對欄位的型態去轉換
+                    if (property.PropertyType == typeof(DateTime))
+                    {
+                        DateTime dt = new DateTime();
+                        if (DateTime.TryParse(row[property.Name].ToString(), out dt))
+                        {
+                            property.SetValue(item, dt, null);
+                        }
+                        else
+                        {
+                            property.SetValue(item, null, null);
+                        }
+                    }
+                    else if (property.PropertyType == typeof(decimal))
+                    {
+                        decimal val = new decimal();
+                        decimal.TryParse(row[property.Name].ToString(), out val);
+                        property.SetValue(item, val, null);
+                    }
+                    else if (property.PropertyType == typeof(double))
+                    {
+                        double val = new double();
+                        double.TryParse(row[property.Name].ToString(), out val);
+                        property.SetValue(item, val, null);
+                    }
+                    else if (property.PropertyType == typeof(int))
+                    {
+                        int val = new int();
+                        int.TryParse(row[property.Name].ToString(), out val);
+                        property.SetValue(item, val, null);
+                    }
+                    else
+                    {
+                        if (row[property.Name] != DBNull.Value)
+                        {
+                            property.SetValue(item, row[property.Name], null);
+                        }
+                    }
+                }
+            }
+            return item;
+        }
     }
 
 
