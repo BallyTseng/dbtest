@@ -1,6 +1,9 @@
 ﻿using Dapper;
+using Dapper.Bulk;
 using System;
 using System.Collections.Generic;
+using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations.Schema;
 using System.Data;
 using System.Data.SqlClient;
 using System.Linq;
@@ -8,9 +11,10 @@ using System.Reflection;
 
 namespace dbtest
 {
-
+    [Table("new_employees")]
     public class DBModel
     {
+        [Key]
         public int id_num { get; set; }
 
         public string fname { get; set; }
@@ -23,7 +27,7 @@ namespace dbtest
 
     class Program
     {
-
+        const int testcount = 10000;
         const string connectionString = @"Data Source = (localdb)\MSSQLLocalDB; Initial Catalog = testdb; Integrated Security = True";
 
         enum InsertType
@@ -32,32 +36,56 @@ namespace dbtest
             dappertype,
             SqlBulkCopy_1,
             SqlBulkCopy_2,
-
+            dapperbulk,
         }
 
 
         static void Main(string[] args)
         {
 
-            var flag = InsertType.SqlBulkCopy_2;
+            var flag = InsertType.dapperbulk;
 
+            DateTime dt = DateTime.UtcNow.AddHours(8);
             switch (flag)
             {
                 case InsertType.cmdtype:
                     cmdtype();
                     break;
                 case InsertType.dappertype:
-                    dappertype();
+                    dappertype(); //1000筆1秒689 , 10000筆4秒227
                     break;
-                case InsertType.SqlBulkCopy_1:
-                    SqlBulkCopy();
-                    break;
-                case InsertType.SqlBulkCopy_2:
+                //case InsertType.SqlBulkCopy_1: //test
+                //    SqlBulkCopy();
+                //    break;
+                case InsertType.SqlBulkCopy_2: //1000筆1秒689,10000筆1秒207
                     SqlBulkCopy2();
                     break;
-            }
+                case InsertType.dapperbulk:
+                    dapperbulk(); //1000筆1秒562,10000筆1秒498
+                    break;
 
-            Console.WriteLine("Hello World!");
+            }
+            DateTime edt = DateTime.UtcNow.AddHours(8);
+            var test = edt.Subtract(dt);
+           
+            Console.WriteLine($"{test.Minutes}分{test.Seconds}秒{test.Milliseconds}");
+        }
+
+        static void dapperbulk()
+        {
+            using (SqlConnection conn =
+               new SqlConnection(connectionString))
+            {
+                conn.Open();
+                List<DBModel> list = new List<DBModel>();
+                for(int i = 0; i< testcount; i++)
+                {
+
+                    list.Add(new DBModel() { fname = "k", lname = "k", minit = 'k' });
+                }
+                conn.BulkInsert(list);
+            }
+           
         }
 
         static void SqlBulkCopy2()
@@ -78,7 +106,11 @@ namespace dbtest
                     {
 
                         List<DBModel> list = new List<DBModel>();
-                        list.Add(new DBModel() { fname = "a", lname = "b", minit = 'c' });
+                        for (int i = 0; i < testcount; i++)
+                        {
+
+                            list.Add(new DBModel() { fname = "k", lname = "k", minit = 'k' });
+                        }
                         DataTable reader = ToDataTable(list);
 
                         bulkCopy.WriteToServer(reader);
@@ -179,7 +211,11 @@ namespace dbtest
                 }
 
                 List<DBModel> list = new List<DBModel>();
-                list.Add(new DBModel() { fname = "1", lname = "2", minit = '3' });
+                for (int i = 0; i < testcount; i++)
+                {
+
+                    list.Add(new DBModel() { fname = "k", lname = "k", minit = 'k' });
+                }
 
 
                 var sqlCommand = @"insert into [new_employees] VALUES (@fname,@minit,@lname);";
