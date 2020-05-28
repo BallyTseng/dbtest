@@ -19,15 +19,19 @@ namespace dbtest
 
         public string fname { get; set; }
 
-        public char minit { get; set; }
+        //少欄位是可被接受的，但僅只於符合null
+        //public char minit { get; set; }
 
         public string lname { get; set; }
+
+        //不可以有不存在DB欄位的表
+        public string test { get; set; }
     }
 
 
     class Program
     {
-        const int testcount = 10000;
+        const int testcount = 1;
         const string connectionString = @"Data Source = (localdb)\MSSQLLocalDB; Initial Catalog = testdb; Integrated Security = True";
 
         enum InsertType
@@ -43,7 +47,7 @@ namespace dbtest
         static void Main(string[] args)
         {
 
-            var flag = InsertType.dapperbulk;
+            var flag = InsertType.SqlBulkCopy_2;
 
             DateTime dt = DateTime.UtcNow.AddHours(8);
             switch (flag)
@@ -81,7 +85,7 @@ namespace dbtest
                 for(int i = 0; i< testcount; i++)
                 {
 
-                    list.Add(new DBModel() { fname = "k", lname = "k", minit = 'k' });
+                    list.Add(new DBModel() { fname = "k", lname = "k" });//, minit = 'k' });
                 }
                 conn.BulkInsert(list);
             }
@@ -96,6 +100,10 @@ namespace dbtest
             {
                 destinationConnection.Open();
 
+                //using (SqlBulkCopy bulkCopy = new SqlBulkCopy(
+                //     connectionString, SqlBulkCopyOptions.KeepIdentity |
+                //     SqlBulkCopyOptions.UseInternalTransaction))
+
                 using (SqlBulkCopy bulkCopy =
        new SqlBulkCopy(destinationConnection))
                 {
@@ -106,10 +114,17 @@ namespace dbtest
                     {
 
                         List<DBModel> list = new List<DBModel>();
+                        bulkCopy.BulkCopyTimeout = 1000;
+                        bulkCopy.BatchSize = 1000;
+                   
+                        bulkCopy.ColumnMappings.Add("fname", "fname");
+                        bulkCopy.ColumnMappings.Add("lname", "lname");
+
+
                         for (int i = 0; i < testcount; i++)
                         {
 
-                            list.Add(new DBModel() { fname = "k", lname = "k", minit = 'k' });
+                            list.Add(new DBModel() { fname = "last", lname = "error" });//, minit = 'k' });
                         }
                         DataTable reader = ToDataTable(list);
 
@@ -214,7 +229,7 @@ namespace dbtest
                 for (int i = 0; i < testcount; i++)
                 {
 
-                    list.Add(new DBModel() { fname = "k", lname = "k", minit = 'k' });
+                   // list.Add(new DBModel() { fname = "k", lname = "k", minit = 'k' });
                 }
 
 
@@ -247,17 +262,32 @@ namespace dbtest
 
             foreach (PropertyInfo prop in props)
             {
-                Type t = GetCoreType(prop.PropertyType);
-                tb.Columns.Add(prop.Name, t);
+                if (prop.Name != "test")
+                {
+                    Type t = GetCoreType(prop.PropertyType);
+                    tb.Columns.Add(prop.Name, t);
+                }
+                else
+                {
+                    var test = prop.Name;
+                }
             }
 
             foreach (T item in items)
             {
-                var values = new object[props.Length];
+                var values = new object[props.Length-1];
 
                 for (int i = 0; i < props.Length; i++)
                 {
-                    values[i] = props[i].GetValue(item, null);
+                    if (props[i].Name != "test")
+                    {
+                        values[i] = props[i].GetValue(item, null);
+                    }
+                    else
+                    {
+                        var test = props[i].Name;
+                    }
+                   
                 }
 
                 tb.Rows.Add(values);
