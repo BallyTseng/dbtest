@@ -1,0 +1,83 @@
+function doGet(e) {
+  
+  var g = QASheet('hi')
+  Logger.log(g);
+}
+
+
+function doPost(e) {
+
+  var CHANNEL_ACCESS_TOKEN = 'fFK6oSUyWEpq0BubV5LaVXxy/y5fYdjxxN/GpS/XwvSplvJSX0R1uH1iMhAsa9xZPCRi1lxr+rADZZG/YnMfze7KNnMhXUArvX0JPH6oZ6Ig9gOuCuXyARcosG+QApwlGpzZlbuDou751LtOCfYE5wdB04t89/1O/w1cDnyilFU=';
+  var msg = JSON.parse(e.postData.contents);
+  console.log(msg);
+
+  // 取出 replayToken 和發送的訊息文字
+  var replyToken = msg.events[0].replyToken;
+  var userMessage = msg.events[0].message.text;
+
+  if (typeof replyToken === 'undefined') {
+    return;
+  }
+
+  var url = 'https://api.line.me/v2/bot/message/reply';
+  
+  var msg = userMessage + '(google)';
+  msg= QASheet(userMessage);
+  
+  UrlFetchApp.fetch(url, {
+      'headers': {
+      'Content-Type': 'application/json; charset=UTF-8',
+      'Authorization': 'Bearer ' + CHANNEL_ACCESS_TOKEN,
+    },
+    'method': 'post',
+    'payload': JSON.stringify({
+      'replyToken': replyToken,
+      'messages': [{
+        'type': 'text',
+        'text': msg,
+      }],
+    }),
+  });
+}
+
+function QASheet(question)
+{
+  var sheeturl = 'https://docs.google.com/spreadsheets/d/1qAxGjDr38sbXAKTwJDdapdDPaxytxY5E0EsmfdTX0FM/edit?usp=sharing';
+  var sheetname = '工作表1';
+  var SpreadSheet = SpreadsheetApp.openByUrl(sheeturl);
+  var sheet = SpreadSheet.getSheetByName(sheetname);
+  
+  // 比對關鍵字
+  // var question = 'yes';
+   var answer = '';
+  
+  //最後一筆寫入資料
+  var LastRow = sheet.getLastRow();
+ 
+  
+    //取得試算表資料
+  var data =[];
+  for (i=0;i<LastRow;i++){
+    data[i]=[];
+  }
+  data = sheet.getRange(1,1,LastRow,2).getValues();
+  
+  //比對關鍵字
+  for (i=0;i<LastRow;i++)
+  {
+    if(data[i][0]== question)
+    {
+      answer = data[i][1];
+    }
+  }
+  
+  // 沒找到答案寫入問題
+  if(answer == '')
+  {
+    sheet.getRange(LastRow+1,1).setValue(question);
+    answer = '嗨，你的問題要再給我多一點時間想想，或換個問題問看看?';
+  }
+  
+  
+  return answer;
+}
